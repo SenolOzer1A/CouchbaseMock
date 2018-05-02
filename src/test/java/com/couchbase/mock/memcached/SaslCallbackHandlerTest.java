@@ -28,28 +28,28 @@ import org.junit.Test;
  * @author Senol Ozer / Amadeus IT Group
  */
 public class SaslCallbackHandlerTest {
-    
+
     private SaslCallbackHandler callbackHandler;
-    
+
     @Before
     public void setUp() {
         callbackHandler = new SaslCallbackHandler("foo", "bar");
     }
-    
+
     @Test
     public void testNameCallback() throws IOException, UnsupportedCallbackException {
         NameCallback nameCallcak = new NameCallback("foo");
         callbackHandler.handle(new Callback[] {nameCallcak});
-        Assert.assertEquals("foo", nameCallcak.getName());        
+        Assert.assertEquals("foo", nameCallcak.getName());
     }
-    
+
     @Test
     public void testPasswordCallback() throws IOException, UnsupportedCallbackException {
         PasswordCallback passwordCallcak = new PasswordCallback("test", true);
         callbackHandler.handle(new Callback[] {passwordCallcak});
-        Assert.assertEquals("bar", new String(passwordCallcak.getPassword()));    
+        Assert.assertEquals("bar", new String(passwordCallcak.getPassword()));
     }
-    
-    
+
+
 
 }

@@ -26,7 +26,7 @@ import com.couchbase.client.core.security.sasl.ShaSaslClientFactory;
 import com.couchbase.mock.memcached.SaslCallbackHandler;
 
 /**
- * 
+ *
  * @author Senol Ozer / Amadeus IT Group
  *
  */

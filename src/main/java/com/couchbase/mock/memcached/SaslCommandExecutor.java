@@ -26,6 +26,10 @@ import com.couchbase.mock.memcached.protocol.CommandCode;
 import com.couchbase.mock.memcached.protocol.ErrorCode;
 import com.couchbase.mock.security.sasl.Sasl;
 
+import javax.security.sasl.SaslException;
+import javax.security.sasl.SaslServer;
+import java.net.ProtocolException;
+
 /**
  * @author Sergey Avseyev
  */
@@ -33,26 +37,32 @@ public class SaslCommandExecutor implements CommandExecutor {
     // http://www.ietf.org/rfc/rfc4616.txt
     // http://www.ietf.org/rfc/rfc5802.txt
 
-    private static final String PROTOCOL_COUCHBASE = "couchbase";
-
     private SaslServer saslServer;
 
     @Override
-    public BinaryResponse execute(BinaryCommand cmd, MemcachedServer server, MemcachedConnection client)
-            throws ProtocolException {
+    public BinaryResponse execute(BinaryCommand cmd, MemcachedServer server, MemcachedConnection client) throws ProtocolException {
         CommandCode cc = cmd.getComCode();
 
         BinaryResponse response;
+        String mechanism = cmd.getKey();
         switch (cc) {
             case SASL_LIST_MECHS:
-                response = new BinarySaslResponse(cmd, "SCRAM-SHA512 SCRAM-SHA256 SCRAM-SHA1 PLAIN");
+                StringBuilder sb = new StringBuilder();
+                for (String m : server.getSaslMechanisms()) {
+                    sb.append(m + " ");
+                }
+                response = new BinarySaslResponse(cmd, sb.toString());
                 break;
             case SASL_AUTH:
-                if (cmd.getKey() == null || "PLAIN".equals(cmd.getKey())) {
-                    response = plainAuth(cmd, server, client);
+                if (server.supportsSaslMechanism(mechanism)) {
+                    if ("PLAIN".equals(mechanism)) {
+                        response = plainAuth(cmd, server, client);
+                    } else {
+                        createSaslServer(cmd, server);
+                        response = saslAuth(cmd, client);
+                    }
                 } else {
-                    createSaslServer(cmd, server, client);
-                    response = saslAuth(cmd, client);
+                    response = new BinarySaslResponse(cmd);
                 }
                 break;
             case SASL_STEP:
@@ -85,7 +95,7 @@ public class SaslCommandExecutor implements CommandExecutor {
         String pass = strs[2];
 
         BinarySaslResponse response;
-        
+
         Bucket bucket = server.getBucket();
         String bPass = bucket.getPassword();
 
@@ -98,22 +108,21 @@ public class SaslCommandExecutor implements CommandExecutor {
         return response;
     }
 
-    private void createSaslServer(BinaryCommand cmd, MemcachedServer server, MemcachedConnection client)
+    private void createSaslServer(BinaryCommand cmd, MemcachedServer server)
             throws ProtocolException {
         try {
-            String serverName = client.getServer().getHostname();
-            String mechanism = cmd.getKey();
             Bucket bucket = server.getBucket();
-            String password = bucket.getPassword();
-            String username = bucket.getName();
-            saslServer = Sasl.createSaslServer(mechanism, PROTOCOL_COUCHBASE, serverName, null,
-                    new SaslCallbackHandler(username, password));
+            saslServer = Sasl.createSaslServer(cmd.getKey(), server.getHostname(), null,
+                    new SaslCallbackHandler(bucket.getName(), bucket.getPassword()));
         } catch (SaslException e) {
             throw new ProtocolException(e.getMessage());
         }
     }
 
     private BinaryResponse saslAuth(BinaryCommand cmd, MemcachedConnection client) throws ProtocolException {
+        if (saslServer == null) {
+            return new BinarySaslResponse(cmd);
+        }
         byte[] raw = cmd.getValue();
         try {
             BinaryResponse response;

@@ -15,15 +15,6 @@
  */
 package com.couchbase.mock.security.sasl;
 
-import java.io.IOException;
-import java.io.StringWriter;
-import java.security.InvalidKeyException;
-import java.security.Key;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.util.HashMap;
-import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -33,14 +24,23 @@ import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.SaslException;
 import javax.security.sasl.SaslServer;
-import com.couchbase.client.core.utils.Base64;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Implementation of a SCRAM-SHA512, SCRAM-SHA256 and SCRAM-SHA1 enabled
  * {@link SaslServer}.
  * <p>
  * Freely inspired from <a href="https://github.com/trondn/java-sasl-scram-sha1/blob/master/src/com/couchbase/security/sasl/scram/ShaImpl.java">java-sasl-scram-sha1 by Trond Norbye</a>
- * 
+ *
  * @author Senol Ozer / Amadeus IT Group
  */
 public class ShaSaslServer implements SaslServer {
@@ -88,8 +88,35 @@ public class ShaSaslServer implements SaslServer {
         byte[] randomNonce = new byte[21];
         SecureRandom random = new SecureRandom();
         random.nextBytes(randomNonce);
-        serverNonce = Base64.encode(randomNonce);
+        serverNonce = new String(Base64.getEncoder().encode(randomNonce));
         iterationCount = 4096;
+    }
+
+    /**
+     * XOR the two arrays and store the result in the first one.
+     *
+     * @param result Where to store the result
+     * @param other  The other array to xor with
+     */
+    private static void xor(byte[] result, byte[] other) {
+        for (int i = 0; i < result.length; ++i) {
+            result[i] = (byte) (result[i] ^ other[i]);
+        }
+    }
+
+    private static void decodeAttributes(HashMap<String, String> attributes, String string) {
+        String[] tokens = string.split(",");
+        for (String token : tokens) {
+            int idx = token.indexOf('=');
+            if (idx != 1) {
+                throw new IllegalArgumentException("the input string is not according to the spec");
+            }
+            String key = token.substring(0, 1);
+            if (attributes.containsKey(key)) {
+                throw new IllegalArgumentException("The key " + key + " is specified multiple times");
+            }
+            attributes.put(key, token.substring(2));
+        }
     }
 
     @Override
@@ -126,10 +153,10 @@ public class ShaSaslServer implements SaslServer {
 
         StringWriter writer = new StringWriter();
         writer.append("v=");
-        writer.append(Base64.encode(serverSignature));
+        writer.append(new String(Base64.getEncoder().encode(serverSignature)));
 
         // validate the client proof to see if we're getting the same value...
-        String myClientProof = Base64.encode(getClientProof());
+        String myClientProof = new String(Base64.getEncoder().encode(getClientProof()));
         if (!myClientProof.equals(attributes.get("p"))) {
             writer.append(",e=failed");
         }
@@ -178,7 +205,7 @@ public class ShaSaslServer implements SaslServer {
             throw new IllegalArgumentException("username and client nonce is mandatory in clientFirstMessageBare");
         }
 
-        salt = Base64.decode("QSXCR+Q6sek8bf92");
+        salt = Base64.getDecoder().decode("QSXCR+Q6sek8bf92");
         generateSaltedPassword();
 
         String nonce = clientNonce + serverNonce;
@@ -188,7 +215,7 @@ public class ShaSaslServer implements SaslServer {
         writer.append("r=");
         writer.append(nonce);
         writer.append(",s=");
-        writer.append(Base64.encode(salt));
+        writer.append(new String(Base64.getEncoder().encode(salt)));
         writer.append(",i=");
         writer.append(Integer.toString(iterationCount));
 
@@ -246,8 +273,8 @@ public class ShaSaslServer implements SaslServer {
      * provided by the Java framework because it didn't support others than SHA1.
      * See https://www.ietf.org/rfc/rfc5802.txt (page 6) for how it is generated.
      *
-     * @param password The password to use
-     * @param salt The salt used to salt the hash function
+     * @param password   The password to use
+     * @param salt       The salt used to salt the hash function
      * @param iterations The number of iterations to sue
      * @return The pbkdf2 version of the password
      */
@@ -288,22 +315,10 @@ public class ShaSaslServer implements SaslServer {
         }
     }
 
-    /**
-     * XOR the two arrays and store the result in the first one.
-     *
-     * @param result Where to store the result
-     * @param other The other array to xor with
-     */
-    private static void xor(byte[] result, byte[] other) {
-        for (int i = 0; i < result.length; ++i) {
-            result[i] = (byte) (result[i] ^ other[i]);
-        }
-    }
-
     private void generateSaltedPassword() throws SaslException {
         final PasswordCallback passwordCallback = new PasswordCallback("Password", false);
         try {
-            callbacks.handle(new Callback[] {passwordCallback});
+            callbacks.handle(new Callback[]{passwordCallback});
         } catch (IOException e) {
             throw new SaslException("Missing callback fetch password", e);
         } catch (UnsupportedCallbackException e) {
@@ -350,21 +365,6 @@ public class ShaSaslServer implements SaslServer {
         return clientKey;
     }
 
-    private static void decodeAttributes(HashMap<String, String> attributes, String string) {
-        String[] tokens = string.split(",");
-        for (String token : tokens) {
-            int idx = token.indexOf('=');
-            if (idx != 1) {
-                throw new IllegalArgumentException("the input string is not according to the spec");
-            }
-            String key = token.substring(0, 1);
-            if (attributes.containsKey(key)) {
-                throw new IllegalArgumentException("The key " + key + " is specified multiple times");
-            }
-            attributes.put(key, token.substring(2));
-        }
-    }
-
     /**
      * Get the AUTH message (as specified in the RFC)
      */
@@ -379,6 +379,14 @@ public class ShaSaslServer implements SaslServer {
             throw new RuntimeException("can't call getAuthMessage without clientFinalMessageNoProof is set");
         }
         return clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageNoProof;
+    }
+
+    /**
+     * Not supported
+     */
+    @Override
+    public String getAuthorizationID() {
+        return null;
     }
 
     /**
@@ -404,15 +412,7 @@ public class ShaSaslServer implements SaslServer {
 
         @Override
         public byte[] getEncoded() {
-            return new byte[] {};
+            return new byte[]{};
         }
-    }
-
-    /**
-     * Not supported
-     */
-    @Override
-    public String getAuthorizationID() {
-        return null;
     }
 }

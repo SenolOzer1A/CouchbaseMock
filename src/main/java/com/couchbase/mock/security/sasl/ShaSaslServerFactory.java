@@ -15,12 +15,12 @@
  */
 package com.couchbase.mock.security.sasl;
 
-import java.security.NoSuchAlgorithmException;
-import java.util.Map;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.sasl.SaslException;
 import javax.security.sasl.SaslServer;
 import javax.security.sasl.SaslServerFactory;
+import java.security.NoSuchAlgorithmException;
+import java.util.Map;
 
 /**
  * The {@link SaslServerFactory} supporting SCRAM-SHA512, SCRAM-SHA256 and
@@ -33,11 +33,11 @@ public class ShaSaslServerFactory implements SaslServerFactory {
     private static final String SCRAM_SHA512 = "SCRAM-SHA512";
     private static final String SCRAM_SHA256 = "SCRAM-SHA256";
     private static final String SCRAM_SHA1 = "SCRAM-SHA1";
-    private static final String[] SUPPORTED_MECHS = {SCRAM_SHA512, SCRAM_SHA256, SCRAM_SHA1};
+    public static final String[] SUPPORTED_MECHS = {SCRAM_SHA1, SCRAM_SHA256, SCRAM_SHA512};
 
     @Override
     public SaslServer createSaslServer(String mechanism, String protocol, String serverName, Map<String, ?> props,
-            CallbackHandler cbh) throws SaslException {
+                                       CallbackHandler cbh) throws SaslException {
 
         int sha = getDigestSize(mechanism);
 
